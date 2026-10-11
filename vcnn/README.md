@@ -1,4 +1,4 @@
-# VCNN — Voxel-based CNN for Maize Structural Component Separation
+<!-- # VCNN — Voxel-based CNN for Maize Structural Component Separation
 
 A clean, cloud-ready reproduction of the training pipeline from:
 
@@ -115,4 +115,4 @@ Key values follow the paper:
 ## License / citation
 
 The original code is for learning use only; commercial use is not allowed by the
-authors. If you use this work, please cite the paper above.
+authors. If you use this work, please cite the paper above. -->
