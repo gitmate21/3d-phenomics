@@ -121,6 +121,20 @@ class softmax_out(nn.Module):
         y_flat = y_perm.view(-1, self._K)
         return self.softmax(y_flat, dim=1), y_conv
 
+
+class conv12(nn.Module):
+    """Segmentation-embedding head: 3x3 then 1x1 conv -> per-voxel feature."""
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv_1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.conv_2 = nn.Conv3d(out_channels, out_channels, kernel_size=1, padding=0)
+
+    def forward(self, x):
+        y_conv = self.conv_2(self.conv_1(x))
+        return y_conv.permute(0, 2, 3, 4, 1).contiguous()
+
+
 # --------------------------------------------------------------------------- #
 # Discriminative loss for instance segmentation (De Brabandere et al., 2017)
 # --------------------------------------------------------------------------- #
