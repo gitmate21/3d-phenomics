@@ -1,0 +1,40 @@
+# ---- Python ------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# ---- Model checkpoints & weights (large; regenerate by training) -------- #
+*.pth
+*.pt
+*.ckpt
+*.tar
+
+# ---- Training artifacts / logs ------------------------------------------ #
+loss.txt
+*.log
+logs/
+checkpoints/
+runs/
+
+# ---- Large data files --------------------------------------------------- #
+# Keep the tiny demo dataset in git, but ignore any other/large .h5 files.
+data/*.h5
+!data/x_y1_y2_idx_33_withoutnoise.h5
+
+# ---- Virtual environments ---------------------------------------------- #
+vcnn/
+.venv/
+venv/
+env/
+ENV/
+
+# ---- OS / editor -------------------------------------------------------- #
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

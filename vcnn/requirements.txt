@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# VCNN dependencies.
+#
+# IMPORTANT for Kaggle / Colab:
+#   PyTorch (with CUDA) is ALREADY installed in those runtimes. Do NOT reinstall
+#   it from here or you may break the pre-built CUDA wheels. Only install the
+#   extra packages below if they are missing, e.g.:
+#       !pip install -r requirements.txt
+#   On Kaggle you usually only need:  pytables h5py scikit-learn
+# ---------------------------------------------------------------------------
+
+# Scientific stack (present on Kaggle/Colab; pinned loosely for local installs)
+numpy>=1.21
+scipy>=1.7
+
+# HDF5 I/O — the datasets are PyTables ".h5" files (module name: `tables`).
+# `numexpr` is a hard dependency of pytables.
+pytables>=3.7
+numexpr>=2.7
+h5py>=3.6
+
+# Used later for embedding->instance clustering (mean-shift / KNN) in evaluation.
+scikit-learn>=1.0
+
+# Plotting / notebook utilities
+matplotlib>=3.4
+ipython>=7.0
+
+# ---------------------------------------------------------------------------
+# PyTorch: rely on the platform build. If you run this LOCALLY without torch,
+# install a CUDA build matching your driver, for example:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# ---------------------------------------------------------------------------
