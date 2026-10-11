@@ -50,13 +50,18 @@ vcnn/
 ## Quick start (Kaggle GPU — recommended)
 
 1. **Settings → Accelerator → GPU** (T4 x2 or P100).
-2. Open `notebooks/kaggle_train.ipynb`, set the clone URL to **your** GitHub fork.
-3. Run the cells top to bottom: clone → install extras → `smoke_test.py` → `train.py`.
+2. **Settings → Internet → On** — required for `pip install` (Kaggle disables internet
+   by default; the first time you'll do a one-time phone verification).
+   Without this, `pip install` fails with *"Could not find a version that satisfies
+   the requirement ..."*.
+3. Open `notebooks/kaggle_train.ipynb`, set the clone URL to **your** GitHub fork.
+4. Run the cells top to bottom: clone → install extras → `smoke_test.py` → `train.py`.
 
 From the command line (inside the notebook or a terminal):
 
 ```bash
-# install only the missing extras (torch is preinstalled on Kaggle/Colab)
+# install only the missing extras (torch is preinstalled on Kaggle/Colab).
+# If this fails, confirm Internet is enabled in Settings.
 pip install -r requirements.txt
 
 # 1) validate everything works (fast)
