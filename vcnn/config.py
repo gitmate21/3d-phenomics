@@ -37,12 +37,16 @@ def detect_platform() -> str:
 
 def _default_dirs(platform: str, repo_root: str) -> dict:
     """Return sensible default directories for the detected platform."""
+    # The demo dataset ships inside the repo at <repo_root>/data, so that is the
+    # default data location on every platform. Users override it (for their own
+    # large datasets) with --data or the VCNN_DATA_DIR env var.
+    data_dir = os.path.join(repo_root, "data")
+
     if platform == "kaggle":
-        # /kaggle/working persists as notebook output; /kaggle/input holds datasets.
+        # /kaggle/working persists as notebook output; good for checkpoints/logs.
         base = "/kaggle/working"
-        data = base if os.path.isdir(base) else os.path.join(repo_root, "data")
         return {
-            "data": data,
+            "data": data_dir,
             "ckpt": os.path.join(base, "checkpoints"),
             "log": os.path.join(base, "logs"),
         }
@@ -51,13 +55,13 @@ def _default_dirs(platform: str, repo_root: str) -> dict:
         drive = "/content/drive/MyDrive"
         base = os.path.join(drive, "vcnn") if os.path.isdir(drive) else "/content"
         return {
-            "data": os.path.join(base, "data"),
+            "data": data_dir,
             "ckpt": os.path.join(base, "checkpoints"),
             "log": os.path.join(base, "logs"),
         }
     # local
     return {
-        "data": os.path.join(repo_root, "data"),
+        "data": data_dir,
         "ckpt": os.path.join(repo_root, "checkpoints"),
         "log": os.path.join(repo_root, "logs"),
     }
