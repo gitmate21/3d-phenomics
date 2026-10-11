@@ -172,8 +172,11 @@ def disc_loss(fts, y, conf):
         rs_var.append((dist * dist).mean())
 
     # inter-cluster distance (ignore background index 0)
-    for i in range(1, num):
-        for j in range(num):
+    # Use the actual number of populated centers so empty instance ids
+    # (skipped above) can't cause an out-of-range index.
+    n_centers = len(rs_center)
+    for i in range(1, n_centers):
+        for j in range(n_centers):
             if i >= j:
                 continue
             val = 2 * conf["c1"] - (rs_center[i] - rs_center[j]).norm(p=2)
@@ -183,7 +186,12 @@ def disc_loss(fts, y, conf):
     rs_center_ = torch.stack(rs_center).view(-1, C)
     rs_center_norm = torch.norm(rs_center_, 2, 1)
     rs_center_norm = torch.clamp(rs_center_norm, min=1e-7)
-    rs_add = torch.norm(rs_center_norm - 6 * conf["c0"], 2, 1)
+    # NOTE: `rs_center_norm` is 1-D (num,). The original code called
+    # torch.norm(..., 2, 1) here, which only worked on old PyTorch 0.1.12
+    # (it silently ignored the out-of-range dim and returned the global norm).
+    # Modern PyTorch raises IndexError, so we compute the global L2 norm,
+    # which reproduces the original (scalar regularizer) behavior.
+    rs_add = torch.norm(rs_center_norm - 6 * conf["c0"], 2)
     rs_add = torch.clamp(rs_add, min=1e-7)
 
     a, b, c, d = conf["abcd"]
