@@ -1,9 +1,4 @@
-"""Utility helpers: weight init, dice loss, and small visualization tools.
-
-Ported to modern PyTorch:
-  * `init.kaiming_normal` -> `init.kaiming_normal_`
-  * `init.constant`       -> `init.constant_`
-"""
+"""Utility helpers: weight init, dice loss, and small visualization tools."""
 
 import numpy as np
 import torch

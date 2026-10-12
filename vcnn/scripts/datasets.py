@@ -6,12 +6,6 @@ Each `.h5` file has a group `/process/` with four arrays (see data/data.md):
     y1   : (N,)     int    classification label  (0 = background, 1 = plant)
     y2   : (N,)     int    instance/segmentation label (0..K-1)
     idxs : (M, 2)   int    (start, end) slice bounds delimiting each sample
-
-Ported / cleaned from the original:
-  * Removed the IPython `embed()` breakpoint that would hang on Kaggle/Colab.
-  * Implemented the previously-missing `_get_test_data` (validation/inference).
-  * Factorized the shared voxelization into `_voxelize`.
-  * Fully device-agnostic; returns tensors/numpy only (DataLoader handles device).
 """
 
 import os
@@ -155,8 +149,8 @@ class PartDataset(data.Dataset):
             self._itr = (self._itr + 1) % self._nset
 
         if self._xyz is None:                   # lazy-load large x array once
-            # NOTE: the demo file stores `x` as a disk-backed PyTables CArray, so
-            # we must keep the file handle open for the lifetime of the dataset.
+            # `x` is a disk-backed PyTables array, so keep the file handle open
+            # for the lifetime of the dataset rather than closing it after read.
             self._h5f = h5f_(self._fname, mode="r")
             self._xyz = self._h5f.get_node("/process/x")
 

@@ -1,12 +1,5 @@
 """
 VCNN model definition (voxel-based 3D U-Net) + discriminative instance loss.
-
-Ported from the original PyTorch 0.1.12 code to modern PyTorch (>=1.x).
-Changes vs. the original:
-  * Removed all IPython `embed()` breakpoints.
-  * `disc_loss` uses `.item()` instead of the removed `.data[0]`.
-  * Fully device-agnostic (CPU/GPU) — no hard `.cuda()` calls.
-  * Added docstrings and small robustness guards.
 """
 
 import numpy as np
@@ -184,13 +177,9 @@ def disc_loss(fts, y, conf):
             rs_dist.append(val * val)
 
     rs_center_ = torch.stack(rs_center).view(-1, C)
-    rs_center_norm = torch.norm(rs_center_, 2, 1)
+    rs_center_norm = torch.norm(rs_center_, 2, 1)          # per-instance center norms
     rs_center_norm = torch.clamp(rs_center_norm, min=1e-7)
-    # NOTE: `rs_center_norm` is 1-D (num,). The original code called
-    # torch.norm(..., 2, 1) here, which only worked on old PyTorch 0.1.12
-    # (it silently ignored the out-of-range dim and returned the global norm).
-    # Modern PyTorch raises IndexError, so we compute the global L2 norm,
-    # which reproduces the original (scalar regularizer) behavior.
+    # Regularizer: pull all instance centers toward a target radius (6 * c0).
     rs_add = torch.norm(rs_center_norm - 6 * conf["c0"], 2)
     rs_add = torch.clamp(rs_add, min=1e-7)
 

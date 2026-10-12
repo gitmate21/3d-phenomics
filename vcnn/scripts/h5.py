@@ -1,9 +1,4 @@
-"""Thin helpers around PyTables for reading/writing the dataset `.h5` files.
-
-Cleaned up from the original:
-  * `dt is 'obj'` -> `dt == 'obj'` (identity comparison on str literals is a bug).
-  * Dropped the legacy `tables.openFile` fallback (removed in modern PyTables).
-"""
+"""Thin helpers around PyTables for reading/writing the dataset `.h5` files."""
 
 import os
 
@@ -86,7 +81,7 @@ def create_vlarray(h5f, where, name, dtype, **args):
 def create_table(h5f, where, name, dtype, **args):
     args = _resolve_filters(args)
     if isinstance(dtype, dict):
-        dtype = _dict2ttype(dtype)  # NOTE: dict reorders fields; use a list if order matters
+        dtype = _dict2ttype(dtype)  # dict reorders fields; pass a list if order matters
     elif not isinstance(dtype, (tables.atom.Atom, numpy.dtype)):
         raise ValueError("dtype(%s) should be dict or tables.atom.Atom!" % dtype)
     return h5f.create_table(where, name, dtype, **args)

@@ -1,15 +1,8 @@
 """
-Central configuration for the VCNN (voxel-based CNN) reproduction.
+Central configuration for the VCNN (voxel-based CNN).
 
-Design goals
-------------
-* Runs unchanged on **Kaggle** (GPU), **Google Colab** (GPU), or a **local** box.
-* No hard-coded Windows/absolute paths. Every path can be overridden with an
-  environment variable or a CLI flag in ``train.py``.
-* All hyper-parameters from the paper's training script live here so there is a
-  single source of truth.
-
-Path resolution order (highest priority first):
+All paths and hyper-parameters live here as a single source of truth. Paths are
+resolved in this order (highest priority first):
     1. CLI argument (handled in train.py)
     2. Environment variable (VCNN_DATA_DIR, VCNN_CKPT_DIR, VCNN_LOG_DIR)
     3. Platform-aware default (Kaggle / Colab / local)
@@ -29,7 +22,6 @@ def detect_platform() -> str:
     """Return 'kaggle', 'colab', or 'local' based on the runtime environment."""
     if os.path.isdir("/kaggle"):
         return "kaggle"
-    # Colab mounts Drive at /content/drive and lives under /content
     if os.path.isdir("/content"):
         return "colab"
     return "local"
@@ -84,7 +76,7 @@ class Config:
         self.ckpt_dir = os.environ.get("VCNN_CKPT_DIR", d["ckpt"])
         self.log_dir = os.environ.get("VCNN_LOG_DIR", d["log"])
 
-        # ---- model / training hyper-parameters (from the paper) ----------- #
+        # ---- model / training hyper-parameters ---------------------------- #
         self.num_classes = 2            # 0 = background/noise, 1 = plant part
         self.criterion = "nll"          # 'nll' or 'dice'
         self.learning_rate = 1e-5
@@ -106,8 +98,8 @@ class Config:
             "abcd": [1, 1, 0.01, 0.01],
         }
 
-        # Gradient clipping (replaces the paper's ad-hoc in-place clamp).
-        self.grad_clip = 1.0            # set to None to disable
+        # Gradient clipping for training stability (set to None to disable).
+        self.grad_clip = 1.0
 
         self._pid = os.getpid()
 

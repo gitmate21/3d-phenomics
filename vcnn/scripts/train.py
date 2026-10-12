@@ -5,15 +5,6 @@ Train the VCNN (voxel-based CNN) for maize stem/leaf classification + segmentati
 Usage (Kaggle / Colab / local):
     python scripts/train.py --data data/x_y1_y2_idx_33_withoutnoise.h5 \
         --model vcnn_demo --epochs 5
-
-Ported from the original `001_train_vcnn.py`. Key changes:
-  * Uses central `config.py` for paths/hyper-parameters (no hard-coded paths).
-  * `.data[0]` -> `.item()`; device-agnostic (CPU/GPU via config).
-  * REMOVED the original's buggy double weight-update (it called optimizer.step()
-    AND manually applied the gradient again). We keep only optimizer.step()
-    plus proper gradient clipping.
-  * Robust checkpoint save/resume so training survives Kaggle/Colab session limits.
-  * Removed all IPython `embed()` breakpoints.
 """
 
 import argparse
@@ -27,7 +18,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-# make sibling modules importable when run as `python scripts/train.py`
+# Allow running as `python scripts/train.py` from anywhere.
 _HERE = os.path.dirname(os.path.abspath(__file__))          # .../vcnn/scripts
 _ROOT = os.path.dirname(_HERE)                              # .../vcnn
 sys.path.insert(0, _HERE)                                   # for datasets/utils/vcnnmodel
