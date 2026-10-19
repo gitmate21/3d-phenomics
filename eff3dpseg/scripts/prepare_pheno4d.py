@@ -72,6 +72,7 @@ def main(argv=None) -> int:
 
     splits = {"train": [], "val": [], "test": []}
     hist = np.zeros(3, dtype=np.int64)
+    extent_shown = False
     for plant in plants:
         src_dir = os.path.join(args.raw, plant)
         dst_dir = os.path.join(args.out, plant)
@@ -84,6 +85,12 @@ def main(argv=None) -> int:
             np.savez_compressed(os.path.join(dst_dir, name), xyz=xyz, label=label)
             hist += np.bincount(label, minlength=3)
             splits[split].append(f"{plant}/{name}")
+            if not extent_shown:
+                # Needed to pick --voxel-size: a plant should be ~50-200 voxels tall.
+                lo, hi = xyz.min(0), xyz.max(0)
+                print(f"  {f}: {len(xyz)} points, extent x/y/z = {(hi - lo).round(3).tolist()} "
+                      f"(units of the raw file)")
+                extent_shown = True
         print(f"{plant}: {len(files)} clouds -> {split}")
 
     split_dir = os.path.join(args.out, "splits")
