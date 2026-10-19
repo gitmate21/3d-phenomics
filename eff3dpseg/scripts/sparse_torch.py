@@ -66,6 +66,51 @@ def _subm_rulebook(indices, shape, k):
     return rules
 
 
+class _SubMFn(torch.autograd.Function):
+    """Submanifold conv with a memory-lean backward.
+
+    Plain autograd would keep one gathered (pairs x C_in) copy per kernel offset for the
+    backward pass (27-125 of them), which is what runs a 15 GB GPU out of memory. Here only
+    the input features and the weight are saved; the gathers are recomputed in backward.
+    Half-precision inputs accumulate in float32 (AMP-safe); other dtypes accumulate natively.
+    """
+
+    @staticmethod
+    def _acc(dtype):
+        return torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+
+    @staticmethod
+    @torch.amp.custom_fwd(device_type="cuda", cast_inputs=torch.float16)
+    def forward(ctx, feats, weight, rules):
+        ctx.rules = rules
+        ctx.save_for_backward(feats, weight)
+        acc = _SubMFn._acc(feats.dtype)
+        out = feats.new_zeros(feats.shape[0], weight.shape[2], dtype=acc)
+        for o, (src, dst) in enumerate(rules):
+            if src.numel():
+                out.index_add_(0, dst, (feats[src] @ weight[o].to(feats.dtype)).to(acc))
+        return out.to(feats.dtype)
+
+    @staticmethod
+    @torch.amp.custom_bwd(device_type="cuda")
+    def backward(ctx, grad_out):
+        feats, weight = ctx.saved_tensors
+        need_x, need_w = ctx.needs_input_grad[0], ctx.needs_input_grad[1]
+        acc = _SubMFn._acc(feats.dtype)
+        gx = torch.zeros(feats.shape, dtype=acc, device=feats.device) if need_x else None
+        gw = torch.zeros(weight.shape, dtype=acc, device=feats.device) if need_w else None
+        for o, (src, dst) in enumerate(ctx.rules):
+            if not src.numel():
+                continue
+            g = grad_out[dst].to(feats.dtype)
+            if need_x:
+                gx.index_add_(0, src, (g @ weight[o].to(feats.dtype).t()).to(acc))
+            if need_w:
+                gw[o] = (feats[src].t() @ g).to(acc)
+        return (gx.to(feats.dtype) if need_x else None,
+                gw.to(weight.dtype) if need_w else None, None)
+
+
 class SubMConv3d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, padding=0, bias=True, indice_key=None):
         super().__init__()
@@ -86,17 +131,7 @@ class SubMConv3d(nn.Module):
             rules = _subm_rulebook(x.indices, x.spatial_shape, self.k)
             if cache_key is not None:
                 x.indice_dict[cache_key] = rules
-        n = x.features.shape[0]
-        out = None
-        for o, (src, dst) in enumerate(rules):
-            if src.numel() == 0:
-                continue
-            prod = x.features[src] @ self.weight[o]
-            if out is None:
-                out = prod.new_zeros(n, self.cout)
-            out.index_add_(0, dst, prod)
-        if out is None:
-            out = x.features.new_zeros(n, self.cout)
+        out = _SubMFn.apply(x.features, self.weight, rules)
         if self.bias is not None:
             out = out + self.bias.to(out.dtype)
         return SparseConvTensor(out, x.indices, x.spatial_shape, x.batch_size, x.indice_dict)

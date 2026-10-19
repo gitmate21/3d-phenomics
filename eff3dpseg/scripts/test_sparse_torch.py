@@ -57,6 +57,29 @@ def test_subm(k):
     print(f"  SubMConv3d k={k}: OK")
 
 
+def test_subm_backward(k=3):
+    """Custom backward == autograd through PyTorch's dense conv (float64)."""
+    x, _ = random_sparse(cin=3, seed=5)
+    x.features = x.features.double().requires_grad_(True)
+    m = st.SubMConv3d(3, 4, k, padding=k // 2, bias=False, indice_key="b").double()
+    r = torch.randn(len(x.features), 4, dtype=torch.float64)
+    (m(x).features * r).sum().backward()
+
+    xf = x.features.detach().clone().requires_grad_(True)
+    i = x.indices.long()
+    # build the dense volume differentiably
+    vol = torch.zeros(x.batch_size, *x.spatial_shape, 3, dtype=torch.float64)
+    vol = vol.index_put((i[:, 0], i[:, 1], i[:, 2], i[:, 3]), xf).permute(0, 4, 1, 2, 3)
+    w = m.weight.detach().clone().requires_grad_(True)
+    wd = w.permute(2, 1, 0).reshape(4, 3, k, k, k)
+    ref = F.conv3d(vol, wd, padding=k // 2)
+    got = ref.permute(0, 2, 3, 4, 1)[i[:, 0], i[:, 1], i[:, 2], i[:, 3]]
+    (got * r).sum().backward()
+    assert torch.allclose(x.features.grad, xf.grad, atol=1e-9), "feature grad mismatch"
+    assert torch.allclose(m.weight.grad, w.grad, atol=1e-9), "weight grad mismatch"
+    print(f"  SubMConv3d k={k} backward vs dense autograd: OK")
+
+
 def test_down_up():
     x, _ = random_sparse(shape=(7, 6, 5), cin=3, seed=1)
     down = st.SparseConv3d(3, 4, 2, stride=2, bias=False, indice_key="d")
@@ -101,6 +124,8 @@ def main():
     test_subm(3)
     test_subm(5)
     test_subm(1)
+    test_subm_backward(3)
+    test_subm_backward(5)
     test_down_up()
     test_key_reuse()
     print("ALL OK")
