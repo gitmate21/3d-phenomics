@@ -8,7 +8,7 @@ PyTorch and Kaggle using [spconv](https://github.com/traveller59/spconv) (prebui
 ## What changed vs. the original
 | Original | Port |
 |---|---|
-| MinkowskiEngine (source build, CUDA ≤ 11.1) | spconv v2 (`scripts/models.py`) |
+| MinkowskiEngine (source build, CUDA ≤ 11.1) | spconv v2, or a pure-PyTorch fallback (`scripts/models.py`, `scripts/sparse_torch.py`) |
 | `ME.utils.sparse_quantize`, `lib/voxelizer.py`, `lib/transforms.py` | numpy/scipy (`scripts/voxelize.py`) |
 | missing `config.py`, `splits/`, dataset registry | `config.py`, `prepare_pheno4d.py`, `scripts/datasets.py` |
 | broken preprocessing script | `scripts/prepare_pheno4d.py` (plant-level splits) |
@@ -25,9 +25,16 @@ Architecture, layer/plane config and loss (cross-entropy, soil ignored) are unch
 - The annotation-efficient *pretraining* stage is not in the original repo and is not implemented here.
 - Mean-field CRF post-processing.
 
+## Sparse backend
+`scripts/models.py` uses spconv when it imports, otherwise `scripts/sparse_torch.py` (pure PyTorch: same
+layers, works on any torch/CUDA and on CPU, but slower and more memory-hungry). Select with
+`EFF_SPARSE_BACKEND=auto|spconv|torch` (default `auto`). spconv ships wheels only up to CUDA 12.6 and compiles
+C++ at import time, which fails on CUDA 13 (current Colab), so the Colab/Kaggle notebooks use `torch`.
+`python scripts/test_sparse_torch.py` checks the fallback layers against PyTorch's dense convolutions.
+
 ## Usage
 ```bash
-pip install spconv-cu124          # match torch.version.cuda, see requirements.txt
+export EFF_SPARSE_BACKEND=torch   # or install spconv-cuXXX (optional, faster) and leave it as auto
 python scripts/smoke_test.py
 python scripts/prepare_pheno4d.py --raw /path/to/Pheno4D --out data --val-plants Tomato06 --test-plants Tomato07
 python scripts/train.py --data data --run-name demo --max-iter 2000

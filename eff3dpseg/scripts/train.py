@@ -1,5 +1,5 @@
 """
-Train Res16UNet34C (spconv) on Pheno4D stem/leaf segmentation.
+Train Res16UNet34C (spconv or pure-PyTorch sparse conv) on Pheno4D stem/leaf segmentation.
 
     python scripts/train.py --data /kaggle/input/pheno4d-npz --run-name demo --max-iter 2000
 
@@ -102,7 +102,7 @@ def main(argv=None):
     args = parse_args(argv)
     conf = make_conf(args)
     if not torch.cuda.is_available():
-        sys.exit("spconv training needs a CUDA GPU (Kaggle: Settings -> Accelerator -> GPU).")
+        sys.exit("training needs a CUDA GPU (Kaggle: Settings -> Accelerator -> GPU).")
     device = torch.device("cuda")
     amp = not args.no_amp
     set_seed(args.seed)

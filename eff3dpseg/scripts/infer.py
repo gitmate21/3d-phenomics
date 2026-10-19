@@ -41,7 +41,7 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     if not torch.cuda.is_available():
-        sys.exit("spconv inference needs a CUDA GPU.")
+        sys.exit("inference needs a CUDA GPU.")
     device = torch.device("cuda")
     conf = copy.deepcopy(default_conf)
     conf.voxel_size, conf.feature_mode = args.voxel_size, args.feature_mode

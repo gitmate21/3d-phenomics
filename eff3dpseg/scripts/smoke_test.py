@@ -3,8 +3,8 @@ Quick end-to-end sanity check (synthetic data, no Pheno4D needed).
 
     python scripts/smoke_test.py
 
-Steps 1-3 need only numpy/scipy. Steps 4-6 need torch + spconv + a CUDA GPU and are
-skipped (with a message) otherwise.
+Steps 1-3 need only numpy/scipy. Steps 4-6 need torch; they use spconv if it works,
+else the pure-PyTorch backend (also fine on CPU). AMP (step 6) needs CUDA.
 """
 
 from __future__ import annotations
@@ -73,17 +73,13 @@ def main():
         assert batch["coords"].shape[1] == 4 and batch["coords"].dtype == torch.int32
         print(f"  batch coords {tuple(batch['coords'].shape)} spatial_shape {batch['spatial_shape']}")
 
-    try:
-        import spconv.pytorch  # noqa: F401
-    except ImportError:
-        print("spconv not installed -> skipping model steps. OK (partial)")
+    from models import BACKEND, build_model, to_sparse
+    cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if cuda else "cpu")
+    print(f"sparse backend: {BACKEND}  device: {device}")
+    if BACKEND == "spconv" and not cuda:
+        print("spconv needs a CUDA GPU -> skipping model steps. OK (partial)")
         return
-    if not torch.cuda.is_available():
-        print("no CUDA GPU -> skipping model steps. OK (partial)")
-        return
-
-    from models import build_model, to_sparse
-    device = torch.device("cuda")
 
     print("[4/6] model forward")
     model = build_model(conf.model, 1, conf.num_classes, conf.conv1_kernel_size, conf.bn_momentum).to(device)
@@ -101,10 +97,13 @@ def main():
     torch.optim.SGD(model.parameters(), lr=1e-3).step()
     print(f"  loss {loss.item():.4f}")
 
-    print("[6/6] AMP forward")
-    with torch.autocast("cuda", dtype=torch.float16):
-        out = model(to_sparse(batch, device))
-    assert torch.isfinite(out.features).all()
+    if cuda:
+        print("[6/6] AMP forward")
+        with torch.autocast("cuda", dtype=torch.float16):
+            out = model(to_sparse(batch, device))
+        assert torch.isfinite(out.features).all()
+    else:
+        print("[6/6] AMP forward skipped (no CUDA)")
     print("OK")
 
 

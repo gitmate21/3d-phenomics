@@ -1,5 +1,7 @@
 """
 Res16UNet34C re-implemented with spconv (v2) instead of MinkowskiEngine.
+If spconv is not importable the same layers run on scripts/sparse_torch.py (pure
+PyTorch, slower); see EFF_SPARSE_BACKEND in _load_backend().
 
 Mapping from the original models/res16unet.py:
     ME conv k=conv1_kernel_size, stride 1   -> SubMConv3d
@@ -16,9 +18,33 @@ PLANES=(32,64,128,256,256,128,96,96), INIT_DIM=32.
 
 from __future__ import annotations
 
+import os
+
 import torch
 import torch.nn as nn
-import spconv.pytorch as spconv
+
+
+def _load_backend():
+    """spconv if it works here, else the pure-PyTorch implementation.
+
+    EFF_SPARSE_BACKEND = auto (default) | spconv | torch.
+    """
+    choice = os.environ.get("EFF_SPARSE_BACKEND", "auto").lower()
+    if choice not in ("auto", "spconv", "torch"):
+        raise ValueError(f"EFF_SPARSE_BACKEND must be auto|spconv|torch, got {choice!r}")
+    if choice in ("auto", "spconv"):
+        try:
+            import spconv.pytorch as backend
+            return backend, "spconv"
+        except Exception as e:  # ImportError, or spconv's import-time C++ build failing
+            if choice == "spconv":
+                raise
+            print(f"[models] spconv unavailable ({type(e).__name__}); using pure-PyTorch sparse conv")
+    import sparse_torch as backend
+    return backend, "torch"
+
+
+spconv, BACKEND = _load_backend()
 
 
 def _bn(c, momentum):
