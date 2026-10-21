@@ -5,6 +5,8 @@ lib/voxelizer.py and lib/transforms.py of the original repo).
 
 from __future__ import annotations
 
+import zlib
+
 import numpy as np
 import scipy.ndimage
 import scipy.interpolate
@@ -67,13 +69,42 @@ def quantize(vox: np.ndarray):
     return coords.astype(np.int32), first, inverse.reshape(-1)
 
 
-def voxel_labels(point_labels: np.ndarray, inverse: np.ndarray, n_vox: int) -> np.ndarray:
-    """Per-voxel label; voxels whose points disagree (or hit soil) become IGNORE."""
+def voxel_labels(point_labels: np.ndarray, inverse: np.ndarray, n_vox: int,
+                 labeled_only: bool = False) -> np.ndarray:
+    """Per-voxel label.
+
+    Default: voxels whose points disagree (or contain an unlabeled/soil point) become IGNORE.
+    ``labeled_only=True`` (limited-label training): unlabeled points carry no information, so a
+    voxel takes the label of its labeled points; it is IGNORE if it has none or they disagree.
+    """
     lo = np.full(n_vox, 255, dtype=np.int64)
     hi = np.zeros(n_vox, dtype=np.int64)
+    if labeled_only:
+        m = point_labels != IGNORE
+        inverse, point_labels = inverse[m], point_labels[m]
     np.minimum.at(lo, inverse, point_labels)
     np.maximum.at(hi, inverse, point_labels)
+    # a voxel without labeled points keeps lo=255, hi=0 and therefore becomes IGNORE
     return np.where(lo == hi, lo, IGNORE)
+
+
+def thin_labels(xyz: np.ndarray, label: np.ndarray, conf, name: str):
+    """Limited-label view of a training cloud, identical on every call for the same cloud.
+
+    Follows the paper: random down-sampling by ``conf.weak_downsample``, then ``conf.labeled_points``
+    random stem/leaf points keep their label and all other points become IGNORE. The choice depends only on
+    (label_seed, cloud name, k), so the same points stay annotated in every epoch.
+    """
+    k = int(conf.labeled_points)
+    rng = np.random.default_rng([int(conf.label_seed), zlib.crc32(name.encode("utf-8")), k])
+    n = len(xyz)
+    keep = np.sort(rng.choice(n, max(1, int(n * conf.weak_downsample)), replace=False))
+    xyz, label = xyz[keep], label[keep]
+    candidates = np.flatnonzero(label != IGNORE)
+    chosen = rng.choice(candidates, min(k, len(candidates)), replace=False)
+    weak = np.full(len(label), IGNORE, dtype=np.int64)
+    weak[chosen] = label[chosen]
+    return xyz, weak
 
 
 def map_labels(raw: np.ndarray) -> np.ndarray:
@@ -96,18 +127,35 @@ def make_features(coords: np.ndarray, mode: str) -> np.ndarray:
 
 
 def voxelize_sample(xyz: np.ndarray, raw_label: np.ndarray, conf, train: bool,
-                    rng: np.random.Generator):
+                    rng: np.random.Generator, name: str = ""):
     """Full sample pipeline.
 
     Returns a dict with voxel ``coords`` (M,3 int32), ``feats`` (M,C float32),
-    ``labels`` (M,) int64, and for evaluation ``inverse`` (N,) and ``point_labels``.
+    ``labels`` (M,) int64, and for evaluation ``inverse`` (N,), ``point_labels`` and ``xyz``
+    (the points actually voxelized: soil is already removed when ``conf.drop_soil``).
+
+    Supervision (conf.labeled_points > 0, training clouds only): only k points keep their label,
+    see ``thin_labels``. Evaluation clouds are always fully labeled.
     """
-    xyz = xyz.astype(np.float64)
     label = map_labels(raw_label)
+    if getattr(conf, "drop_soil", False):
+        keep = np.asarray(raw_label) != 0                 # raw id 0 = soil
+        xyz, label = xyz[keep], label[keep]
+    weak = bool(train and getattr(conf, "labeled_points", 0) > 0)
+    if weak:
+        xyz, label = thin_labels(xyz, label, conf, name)
+    kept_xyz = xyz
+    xyz = xyz.astype(np.float64)
 
     if train:
         if conf.point_dropout and rng.random() < conf.point_dropout:
-            keep = rng.choice(len(xyz), int(len(xyz) * (1 - conf.point_dropout)), replace=False)
+            if weak:                                      # never drop the few labeled points
+                unlabeled = np.flatnonzero(label == IGNORE)
+                drop = rng.choice(unlabeled, int(len(unlabeled) * conf.point_dropout), replace=False)
+                keep = np.ones(len(xyz), dtype=bool)
+                keep[drop] = False
+            else:
+                keep = rng.choice(len(xyz), int(len(xyz) * (1 - conf.point_dropout)), replace=False)
             xyz, label = xyz[keep], label[keep]
         centre = xyz.mean(0)
         xyz = (xyz - centre) @ random_rotation(conf.rotation_aug, rng).T
@@ -129,9 +177,10 @@ def voxelize_sample(xyz: np.ndarray, raw_label: np.ndarray, conf, train: bool,
     out = {
         "coords": coords,
         "feats": make_features(coords, conf.feature_mode),
-        "labels": voxel_labels(label, inverse, len(coords)),
+        "labels": voxel_labels(label, inverse, len(coords), labeled_only=weak),
     }
     if not train:
         out["inverse"] = inverse
         out["point_labels"] = label
+        out["xyz"] = kept_xyz
     return out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 
 import numpy as np
@@ -47,6 +48,69 @@ def format_metrics(table: np.ndarray, class_names) -> str:
         vals = table[:, k]
         lines.append(f"{name:<12}" + "".join(f"{v:9.1f}" for v in vals) + f"{np.nanmean(vals):9.1f}")
     return "\n".join(lines)
+
+
+def collect_environment(repo_root: str) -> dict:
+    """Software/hardware facts worth keeping with a run (best effort, never raises)."""
+    import platform
+    import subprocess
+
+    env = {"python": platform.python_version()}
+    try:
+        import torch
+        env.update(torch=torch.__version__, cuda=torch.version.cuda,
+                   gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
+    except Exception:
+        pass
+    try:
+        from models import BACKEND
+        env["sparse_backend"] = BACKEND
+    except Exception:
+        pass
+    try:
+        env["git_commit"] = subprocess.run(["git", "-C", repo_root, "rev-parse", "--short", "HEAD"],
+                                           capture_output=True, text=True, timeout=10).stdout.strip() or None
+    except Exception:
+        env["git_commit"] = None
+    return env
+
+
+def format_report(report: dict) -> str:
+    """Readable multi-section text for a nested dict (sections -> key/value lines)."""
+    lines = ["=" * 78]
+    for section, body in report.items():
+        lines.append(f"[{section}]")
+        if isinstance(body, dict):
+            for k, v in body.items():
+                if isinstance(v, dict):
+                    lines.append(f"  {k}:")
+                    lines.extend(f"      {kk}: {vv}" for kk, vv in v.items())
+                else:
+                    lines.append(f"  {k}: {v}")
+        else:
+            lines.append(f"  {body}")
+    lines.append("=" * 78)
+    return "\n".join(lines)
+
+
+def write_report(report: dict, paths) -> list:
+    """Save the report as JSON at every path in ``paths``; an existing file's launch is kept in ``history``."""
+    import json
+
+    written = []
+    for path in paths:
+        history = []
+        if os.path.isfile(path):
+            try:
+                old = json.load(open(path))
+                history = old.get("history", []) + [{"run": old.get("run", {}), "supervision": old.get("supervision", {})}]
+            except Exception:
+                pass
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as fh:
+            json.dump({**report, "history": history}, fh, indent=2, default=str)
+        written.append(path)
+    return written
 
 
 def set_seed(seed: int) -> None:

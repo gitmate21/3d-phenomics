@@ -88,6 +88,17 @@ class Config:
         self.elastic_params = ((10.0, 2.0), (40.0, 8.0))
         self.point_dropout = 0.2
 
+        # ---- supervision (Eff-3DPSeg paper, Sec. 2.2.4) -------------------- #
+        # labeled_points = 0 -> every point labeled (full supervision). k > 0 -> keep k randomly chosen
+        # labeled points per training cloud (after random down-sampling by weak_downsample); every other
+        # point is unlabeled (ignored in the loss). Validation/test clouds are always fully labeled.
+        self.labeled_points = 0
+        self.weak_downsample = 0.2
+        self.label_seed = 0
+        # The paper deletes the soil points. True removes them from the input as well as from the loss;
+        # False keeps them as input and only ignores them in the loss (the behaviour of earlier runs).
+        self.drop_soil = True
+
         # ---- optimisation (pheno4d.sh) ------------------------------------ #
         self.lr = 0.1
         self.momentum = 0.9

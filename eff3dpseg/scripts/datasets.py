@@ -52,9 +52,9 @@ class Pheno4DDataset(Dataset):
             xyz, label = z["xyz"], z["label"]
         # Fresh entropy per call in training; eval voxelization is deterministic.
         rng = np.random.default_rng(None if self.train else self.seed + idx)
-        s = voxelize_sample(xyz, label, self.conf, self.train, rng)
+        s = voxelize_sample(xyz, label, self.conf, self.train, rng, name=rel)
         s["name"] = rel
-        s["xyz"] = xyz if not self.train else None
+        s.setdefault("xyz", None)      # eval: the points actually voxelized (soil already removed if dropped)
         return s
 
 

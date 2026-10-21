@@ -32,14 +32,36 @@ layers, works on any torch/CUDA and on CPU, but slower and more memory-hungry). 
 C++ at import time, which fails on CUDA 13 (current Colab), so the Colab/Kaggle notebooks use `torch`.
 `python scripts/test_sparse_torch.py` checks the fallback layers against PyTorch's dense convolutions.
 
+## Supervision settings (paper Sec. 2.2.4) and run reports
+`scripts/train.py` can train with every point labeled or with only a few labeled points per cloud:
+
+| flag | meaning |
+|---|---|
+| `--labeled-points 0` (default) | all points labeled (full supervision) |
+| `--labeled-points 50 / 100 / 200` | each training cloud is randomly down-sampled by `--weak-downsample` (0.2), then only k randomly chosen stem/leaf points keep their label; all other points are unlabeled. The same points stay labeled in every epoch (`--label-seed`). Validation/test clouds are always fully labeled |
+| `--drop-soil` (default) / `--keep-soil` | delete soil points from the input as the paper does, or keep them as input and only ignore them in the loss (how earlier runs were trained) |
+
+These runs start from scratch, so they correspond to the paper's **Baseline** (no self-supervised pretraining) rows,
+not to Eff-3DPSeg, whose weak results need the VIB pretraining that is not implemented here. Each setting is a separate
+training run.
+
+Every run prints its parameters at the start (data directory and splits, checkpoint/log directories, supervision,
+model, optimisation, voxelization, a sanity check of the labeled voxels, git commit, GPU) and saves them as
+`<run-name>_params.json` in both the log and the checkpoint directory. `infer.py` and `compare_runs.py` read the voxel
+size, feature mode and soil handling from the checkpoint (checkpoints from before the soil option are evaluated with
+soil kept). `scripts/compare_runs.py` evaluates several runs and prints precision / recall / F1 / IoU next to the
+paper's Table 3 rows.
+
 ## Usage
 ```bash
 export EFF_SPARSE_BACKEND=torch   # or install spconv-cuXXX (optional, faster) and leave it as auto
 python scripts/smoke_test.py
 python scripts/prepare_pheno4d.py --raw /path/to/Pheno4D --out data --val-plants Tomato06 --test-plants Tomato07
 python scripts/train.py --data data --run-name demo --max-iter 2000
+python scripts/train.py --data data --run-name demo_w50 --labeled-points 50 --max-iter 2000   # 50 labeled points per cloud
 python scripts/train.py --data data --run-name demo --max-iter 2000 --resume auto
 python scripts/infer.py --data data --ckpt checkpoints/demo_best.pth --phase test --out-dir preds --save-ply
+python scripts/compare_runs.py --data data --ckpt-dir checkpoints --runs demo demo_w50
 ```
 On Kaggle use `notebooks/kaggle_train.ipynb`. Env overrides: `EFF_DATA_DIR`, `EFF_CKPT_DIR`, `EFF_LOG_DIR`.
 

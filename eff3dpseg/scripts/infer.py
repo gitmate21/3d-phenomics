@@ -6,6 +6,10 @@ Full-resolution inference + evaluation.
 Each plant is voxelized without augmentation, predicted, and the voxel labels are
 copied back to every raw point through the voxelization's inverse map (exact, no
 KD-tree needed). IoU is computed on raw points; soil / unlabeled points are skipped.
+
+The voxel size, feature mode and soil handling default to what the checkpoint was trained with
+(saved in the checkpoint); pass --voxel-size / --feature-mode / --drop-soil / --keep-soil to override.
+Checkpoints from before the soil option existed were trained with soil kept, and are evaluated that way.
 """
 
 from __future__ import annotations
@@ -35,20 +39,44 @@ def main(argv=None):
     p.add_argument("--phase", default="test", choices=["train", "val", "test", "trainval"])
     p.add_argument("--out-dir", default=None, help="write per-plant .npz predictions here")
     p.add_argument("--save-ply", action="store_true", help="also write coloured .ply files")
-    p.add_argument("--voxel-size", type=float, default=default_conf.voxel_size)
-    p.add_argument("--feature-mode", default=default_conf.feature_mode, choices=["ones", "xyz"])
+    p.add_argument("--voxel-size", type=float, default=None, help="default: the value saved in the checkpoint")
+    p.add_argument("--feature-mode", default=None, choices=["ones", "xyz"], help="default: from the checkpoint")
+    p.add_argument("--drop-soil", dest="drop_soil", action="store_const", const=True,
+                   help="remove soil points (default: as the checkpoint was trained)")
+    p.add_argument("--keep-soil", dest="drop_soil", action="store_const", const=False,
+                   help="keep soil points (default: as the checkpoint was trained; old checkpoints kept soil)")
+    p.set_defaults(drop_soil=None)
     p.add_argument("--no-amp", action="store_true")
+    p.add_argument("--allow-cpu", action="store_true", help="allow running without a GPU (very slow; for tests)")
     args = p.parse_args(argv)
 
-    if not torch.cuda.is_available():
+    cuda = torch.cuda.is_available()
+    if not cuda and not args.allow_cpu:
         sys.exit("inference needs a CUDA GPU.")
-    device = torch.device("cuda")
+    device = torch.device("cuda" if cuda else "cpu")
+    ck = torch.load(args.ckpt, map_location="cpu", weights_only=True)
+    saved = ck.get("args", {})
+
+    def pick(cli, key, fallback):
+        """CLI value if given, else the checkpoint's saved value, else the fallback; warn on a mismatch."""
+        if cli is not None:
+            if key in saved and saved[key] != cli:
+                print(f"WARNING: --{key.replace('_', '-')} {cli} differs from the training value {saved[key]}")
+            return cli
+        return saved.get(key, fallback)
+
     conf = copy.deepcopy(default_conf)
-    conf.voxel_size, conf.feature_mode = args.voxel_size, args.feature_mode
+    conf.voxel_size = pick(args.voxel_size, "voxel_size", default_conf.voxel_size)
+    conf.feature_mode = pick(args.feature_mode, "feature_mode", default_conf.feature_mode)
+    conf.drop_soil = pick(args.drop_soil, "drop_soil", False)       # legacy checkpoints kept soil
+    print(f"checkpoint: {args.ckpt}  (iteration {ck.get('iteration')}, best val mIoU {ck.get('best_miou')})")
+    print(f"trained with: labeled_points={saved.get('labeled_points', 'all (legacy)')}  "
+          f"run={saved.get('run_name')}  data={saved.get('data')}")
+    print(f"evaluating with: voxel_size={conf.voxel_size}  feature_mode={conf.feature_mode}  "
+          f"drop_soil={conf.drop_soil}  phase={args.phase}  data={os.path.abspath(args.data)}")
 
     in_ch = 1 if conf.feature_mode == "ones" else 3
     model = build_model(conf.model, in_ch, conf.num_classes, conf.conv1_kernel_size, conf.bn_momentum).to(device)
-    ck = torch.load(args.ckpt, map_location="cpu", weights_only=True)
     model.load_state_dict(ck["model"])
     model.eval()
 
@@ -62,7 +90,7 @@ def main(argv=None):
     per_cloud = []
     with torch.no_grad():
         for batch in loader:
-            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=not args.no_amp):
+            with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=cuda and not args.no_amp):
                 out = model(to_sparse(batch, device))
             vox_pred = out.features.argmax(1).cpu().numpy()
             point_pred = vox_pred[batch["inverse"][0]]

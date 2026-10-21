@@ -42,7 +42,8 @@ def main():
     rng = np.random.default_rng(0)
     s = voxelize_sample(xyz, lab, conf, train=False, rng=rng)
     assert s["coords"].shape[1] == 3 and s["coords"].dtype == np.int32
-    assert len(s["inverse"]) == len(xyz) and s["inverse"].max() == len(s["coords"]) - 1
+    n_expected = int((lab != 0).sum()) if conf.drop_soil else len(xyz)      # soil is removed by default
+    assert len(s["inverse"]) == n_expected and s["inverse"].max() == len(s["coords"]) - 1
     assert set(np.unique(s["labels"])) <= {0, 1, 255}
     print(f"  {len(xyz)} points -> {len(s['coords'])} voxels, labels {np.unique(s['labels'])}")
 
@@ -50,6 +51,41 @@ def main():
     t = voxelize_sample(xyz, lab, conf, train=True, rng=rng)
     assert t["coords"].min() == 0 and len(t["coords"]) > 0
     print(f"  train voxels: {len(t['coords'])}")
+
+    print("[2b/6] supervision options: soil removal, limited labels, run report")
+    import copy
+    import json
+    from voxelize import map_labels, thin_labels
+    from utils import format_report, write_report
+    c = copy.deepcopy(conf)
+    c.drop_soil, c.labeled_points, c.weak_downsample, c.label_seed = True, 0, 0.2, 0
+    e = voxelize_sample(xyz, lab, c, train=False, rng=rng)
+    assert len(e["xyz"]) == int((lab != 0).sum()) and (e["point_labels"] != 255).all(), "soil must be removed"
+    assert len(e["inverse"]) == len(e["xyz"]) == len(e["point_labels"]), "eval arrays must stay aligned"
+    c.drop_soil = False
+    assert len(voxelize_sample(xyz, lab, c, train=False, rng=rng)["xyz"]) == len(xyz), "soil must be kept"
+    plant = lab != 0
+    pxyz, plab = xyz[plant], map_labels(lab[plant])
+    c.labeled_points = 50
+    a_xyz, a_lab = thin_labels(pxyz, plab, c, "TomatoA/x.npz")
+    b_xyz, b_lab = thin_labels(pxyz, plab, c, "TomatoA/x.npz")
+    assert np.array_equal(a_xyz, b_xyz) and np.array_equal(a_lab, b_lab), "labeled points must be static"
+    assert int((a_lab != 255).sum()) == 50 and len(a_xyz) == int(len(pxyz) * 0.2)
+    assert not np.array_equal(a_lab, thin_labels(pxyz, plab, c, "TomatoB/x.npz")[1]), "choice must depend on the cloud"
+    c.drop_soil = True
+    nl = {int((voxelize_sample(xyz, lab, c, True, np.random.default_rng(i), name="TomatoA/x.npz")["labels"] != 255).sum())
+          for i in range(5)}
+    assert all(0 < v <= 50 for v in nl), nl
+    c.labeled_points = 0
+    assert int((voxelize_sample(xyz, lab, c, True, rng, name="TomatoA/x.npz")["labels"] != 255).sum()) > 500
+    with tempfile.TemporaryDirectory() as tmp0:
+        rep = {"run": {"name": "t"}, "supervision": {"labeled_points": 50, "drop_soil": True}}
+        paths = write_report(rep, [os.path.join(tmp0, "a", "t_params.json")])
+        write_report(rep, paths)                       # second launch keeps the first in 'history'
+        saved = json.load(open(paths[0]))
+        assert saved["supervision"]["labeled_points"] == 50 and len(saved["history"]) == 1
+        assert "[supervision]" in format_report(rep)
+    print(f"  labeled voxels per cloud with 50 labeled points: {sorted(nl)}")
 
     print("[3/6] prepare_pheno4d + dataset round-trip")
     import prepare_pheno4d
