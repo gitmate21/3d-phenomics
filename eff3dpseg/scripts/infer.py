@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 from config import conf as default_conf  # noqa: E402
 from datasets import Pheno4DDataset, collate  # noqa: E402
 from models import build_model, to_sparse  # noqa: E402
-from utils import fast_hist, per_class_iu, save_ply  # noqa: E402
+from utils import fast_hist, format_metrics, per_class_iu, prf_iou, save_ply  # noqa: E402
 
 
 def main(argv=None):
@@ -59,6 +59,7 @@ def main(argv=None):
 
     n = conf.num_classes
     hist = np.zeros((n, n), dtype=np.int64)
+    per_cloud = []
     with torch.no_grad():
         for batch in loader:
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=not args.no_amp):
@@ -68,6 +69,7 @@ def main(argv=None):
             point_label = batch["point_labels"][0]
             h = fast_hist(point_pred, point_label, n)
             hist += h
+            per_cloud.append(h)
             name = batch["name"][0]
             iou = per_class_iu(h)
             print(f"{name}: mIoU {np.nanmean(iou):.4f}  " +
@@ -85,6 +87,14 @@ def main(argv=None):
     for c, i in zip(conf.class_names, ious):
         print(f"  {c}: {i * 100:.2f}")
     print("confusion matrix (rows = ground truth):\n", hist)
+
+    # Paper-style metrics (Eff-3DPSeg Table 3): per class and the mean over the classes, in %.
+    print("\n==== precision / recall / F1 / IoU, pooled over all points ====")
+    print(format_metrics(prf_iou(hist), conf.class_names))
+    if per_cloud:
+        mean_cloud = np.nanmean(np.stack([prf_iou(h) for h in per_cloud]), axis=0)
+        print(f"\n==== same metrics, averaged over the {len(per_cloud)} clouds ====")
+        print(format_metrics(mean_cloud, conf.class_names))
 
 
 if __name__ == "__main__":
